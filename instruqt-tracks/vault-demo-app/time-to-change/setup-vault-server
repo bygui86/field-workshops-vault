@@ -1,0 +1,160 @@
+#!/bin/sh -l
+
+# Install curl
+apk add curl
+
+# Install jq
+apk add jq
+
+# Install groff
+apk add groff
+
+# Install pip
+apk add py-pip
+
+# Install mysql-client
+apk add mysql-client
+
+# Write vault-config.hcl
+cat <<-EOF > /vault/config/vault-config.hcl
+listener "tcp" {
+ address = "0.0.0.0:8200"
+ tls_disable = 1
+}
+storage "file" {
+  path = "/vault/file"
+}
+disable_mlock = true
+api_addr = "http://localhost:8200"
+ui=true
+EOF
+
+# Run Vault server
+vault server -config=/vault/config/vault-config.hcl -log-level=debug > /vault/logs/vault.log 2>&1 &
+
+# Sleep 5 seconds
+sleep 5
+
+# Initialize Vault server
+vault operator init -key-shares=1 -key-threshold=1 > init.log
+
+# Extract root token and unseal key from init.log
+token=$(sed -n 3p init.log | cut -d':' -f2 | cut -d' ' -f2)
+unseal_key=$(sed -n 1p init.log | cut -d':' -f2 | cut -d' ' -f2)
+
+# Write token to /root/token
+echo $token > /root/token
+
+# TODO: auto-unseal this
+# Write unseal key to /root/unseal_key
+echo $unseal_key > /root/unseal_key
+
+# Unseal Vault server
+vault operator unseal $unseal_key
+
+# Log in with the root token
+vault login $token
+
+###########
+# Create Namespaces
+###########
+
+# TODO: Use a Vault Enterprise container
+# TODO: vault namespace create dba
+# TODO: export VAULT_NAMESPACE="dba"
+
+###########
+# User Policies
+###########
+
+tee dba-operator-policy.hcl <<EOF
+path "kv/data/db/*" {
+  capabilities = ["list", "read", "create", "update"]
+}
+EOF
+
+tee operator-policy.hcl <<EOF
+path "kv/data/api/*" {
+  capabilities = ["list", "read", "create", "update"]
+}
+EOF
+
+tee security-policy.hcl <<EOF
+path "kv/data/db/*" {
+  capabilities = ["read"]
+}
+
+path "kv/data/api/*" {
+  capabilities = ["read"]
+}
+EOF
+
+tee cc-storage-svc-devs-policy.hcl <<EOF
+path "kv/data/db/cc-storage-db-creds" {
+  capabilities = ["read"]
+}
+
+path "kv/data/api/cc-storage-svc-api-token" {
+  capabilities = ["read"]
+}
+EOF
+
+###########
+# Service Policies
+###########
+tee web-svc-policy.hcl <<EOF
+path "kv/data/db/cust-profile-db-creds" {
+  capabilities = ["read"]
+}
+
+path "kv/data/db/cc-storage-db-creds" {
+  capabilities = ["read"]
+}
+EOF
+
+tee cc-storage-svc-policy.hcl <<EOF
+path "kv/data/db/cc-storage-db-creds" {
+  capabilities = ["read"]
+}
+
+path "kv/data/api/cc-storage-svc-api-token" {
+  capabilities = ["read"]
+}
+EOF
+
+###########
+# Seed Secrets
+###########
+
+# Create the KV secrets engine for static secrets
+vault secrets enable -path="kv" kv-v2
+
+# Seed a sample Customer Profile secret
+vault kv put kv/db/mysql/cust-profile-db-creds username=$MYSQL_USER password=$MYSQL_BAD_PASS
+
+# Seed a sample API secret
+vault kv put kv/api/shopping-cart-svc-api-token token="c0mpr0m153d"
+
+# Seed a sample Credit Card DB secret
+vault kv put kv/db/mysql/cc-storage-db-creds username=$MYSQL_USER password=$MYSQL_BAD_PASS
+
+# TODO: seed MySQL data
+
+###########
+# Configure Old Secrets for Migration
+###########
+
+# Set up the shared MySQL password that will be migrated into Vault
+mkdir -p /share/mysql
+tee /share/mysql/cust-profile-db-creds.txt <<EOF
+username=$MYSQL_USER
+password=$MYSQL_GOOD_PASS
+EOF
+
+mkdir -p /git/app-secrets
+tee /git/app-secrets/cc-storage-db-creds.txt <<EOF
+username=root
+password=$MYSQL_ROOT_PASSWORD
+EOF
+
+exit 0

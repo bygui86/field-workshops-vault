@@ -1,0 +1,574 @@
+slug: vault-demo-app
+id: gc5ak3quhakx
+type: track
+title: Vault Demo App
+teaser: Help get ACME, Inc. into regulatory compliance.
+description: ACME, Inc. has been caught with bad secrets management practices by independent
+  auditors. Learn how to migrate old application secrets and get ACME, Inc. compliant.
+icon: https://storage.googleapis.com/instruqt-frontend/assets/hashicorp/tracks/vault.png
+tags:
+- vault
+- aws
+- demo-app
+owner: hashicorp
+developers:
+- neil@hashicorp.com
+private: true
+published: false
+maintenance: true
+challenges:
+- slug: time-to-change
+  id: xegkefzbeka5
+  type: challenge
+  title: Time to Change
+  teaser: Busted! Secrets at ACME, Inc. are not centralized or governed. It's time
+    to change.
+  assignment: |-
+    You have been automatically logged into Vault using the
+    [root token](https://www.vaultproject.io/docs/concepts/tokens.html#root-tokens).
+
+    At any time during this track, you can view your root token at `/root/token`.
+
+    ```
+    cat /root/token
+    ```
+
+    If you open up the Vault UI tab and use this token, you can log into the UI and
+    take a look around.
+
+    This token will be valid for the duration of the track. Typically, you'll
+    `export` that token value as your `VAULT_TOKEN` environment variable, however,
+    you should not do that for this track.
+
+    ---
+
+    Since you are logged in with the root token already, you'll have full access to begin
+    this challenge.
+
+    *TODO: SHOW THE BROKEN APP UI, AND HOW IT CANNOT ACCESS ANY EXTERNAL SYSTEM ANYMORE.*
+
+    You know your team member has already migrated the secret into Vault, but you don't
+    know at what path it is stored. Everything in Vault is path based, so the first thing
+    you will need to do is find out at what path the `kv` secrets engine is mounted.
+
+    ```
+    vault secrets list
+    ```
+
+    Notice that the `kv` secrets engine is mounted at the path `kv/`. Next, you
+    need to list the keys of that `kv` mount until you find the Customer Profile
+    MySQL database credentials.
+
+    ```
+    vault kv list kv
+    ```
+
+    Note that there are multiple keys inside the `kv` mount already, including `api` and
+    `db`. Continue digging into the db` one, using `vault kv list` to get familiar with
+    path based secrets.
+
+    ```
+    vault kv list kv/db
+    vault kv list kv/db/mysql
+    vault kv list kv/db/api
+    ```
+
+    You now have an idea of how path based secrets are laid out in Vault's `kv` secrets
+    engine.
+  notes:
+  - type: text
+    contents: |-
+      You are a DevOps engineer at ACME, Inc.
+
+      ACME, Inc. has recently been audited by regulators. As a result of the audit,
+      it was exposed that ACME has been keeping secrets in plain text in git repos,
+      shared mounts, and spreadsheets.
+  - type: text
+    contents: |-
+      To satisfy the regulators and auditors, ACME has decided to bring Vault in
+      as a centralized secrets management service. Your team has been tasked with
+      migrating from your legacy secret storage to the new, Vault secrets management
+      solution.
+
+      To start, you and your team are going to migrate all of the secrets required
+      to run the ACME Store Web Service.
+  - type: text
+    contents: |-
+      The ACME Store Web Service consists of five components within scope.
+
+        1) `web-svc`
+          - A front end web service that runs on a VM.
+        2) `cust-profile-db`
+          - A MySQL database that contains customer profile information.
+        3) `shopping-cart-svc`
+          - A containerized shopping cart service (maintly retrieves items added to cart by customers).
+        4) `cc-storage-svc`
+          - A service/api endpoint that stores and retrieves credit card information.
+        5) `cc-storage-db`
+          - A database containing customer credit card information.
+
+      *TODO: add an architecture diagram here*
+  - type: text
+    contents: |-
+      The ACME Store Web Service also has five secrets in use today.
+
+      1) `cust-profile-db-creds`
+        - MySQL database credentials for the Customer Profile database.
+      2) `shopping-cart-svc-api-token`
+        - API token used by `web-svc` to access `shopping-cart-svc`.
+      3) `cc-storage-db-creds`
+        - Username and password used by a containerized credit-card-storage service to access
+        cc-storage-db.
+      4) `cc-storage-svc-api-token`
+        - API token used by `web-svc` to access `cc-storage-svc`.
+      5) `web-svc-crt`
+        - Certificate used by web application.
+
+      You will learn how each of these are deployed later in the track. For now, just
+      remember what they are used for.
+  tabs:
+  - title: Time to Change
+    type: terminal
+    hostname: vault-server
+  - title: Vault UI
+    type: service
+    hostname: vault-server
+    port: 8200
+  difficulty: basic
+  timelimit: 120
+- slug: migrating-static-database-secrets
+  id: 3wunlrlkq2nz
+  type: challenge
+  title: Migrating Static Database Secrets
+  teaser: Migrate your first secret from a shared mount to Vault.
+  assignment: |-
+    *TODO: SHOW THE SECRET IN THE SHARED MOUNT*
+
+    Since Vault centrally secures, stores, and controls access to secrets across distributed
+    infrastructure and applications, it is critical to control permissions before any user
+    or machine can gain access. Since Vault operates on the principle of "least-privileged"
+    you should scope the access to be as limited as possible.
+
+    There are two roles at ACME that will need access to these secrets. The DBA team
+    (`dba-operator`) will need to be able to perform all CRUD operations on for the MySQL
+    creds path, and the actual web service (`web-svc`) itself only needs to read the secrets
+    at that path.
+
+    You will lock down access using Vault's
+    [ACL based policy system](https://www.vaultproject.io/docs/concepts/policies.html).
+    There are two primary roles that need to access the Customer Profile database: DBAs
+    (`dba-operators`) and the web service (`web-svc`) itself. The DBAs should be able to
+    perform all operations on the `kv/database/` path. The web service should only be able
+    to read secrets at that path.
+
+    You have been provided with pre-written ACL policies - take a look at them to see
+    what they will need to look like to make sure we have the right authorization.
+
+    ```
+    cat dba-operator-policy.hcl
+    cat web-svc-policy.hcl
+    ```
+
+    Once you feel comfortable in your understanding of the policies, write them to Vault.
+
+    ```
+    vault policy write dba-operator dba-operator-policy.hcl
+    vault policy write web-svc web-svc-policy.hcl
+    ```
+
+    Now that the policies are in place for your users, you should enable the
+    [Userpass auth method](https://www.vaultproject.io/docs/auth/userpass.html) and
+    create some users for that auth method that leverage the policies you just created.
+
+    ```
+    vault auth enable userpass
+    ```
+
+    Create a user for Dan on the DBA team - call him `dba-dan`, and make sure that he gets
+    the `dba-operator` policy.
+
+    ```
+    vault write auth/userpass/users/dba-dan password=dba-dan policies=dba-operator
+    ```
+
+    Now that the user is created and configured with the right policy, you should log in
+    with the `dba-dan` user and confirm the policies are correctly applied.
+
+    ```
+    vault login -method=userpass username=dba-dan password=dba-dan
+    ```
+
+    Note the policy after logging in. Since you have logged in with the DBA user,
+    you should be able to read the secret from the path.
+
+    ```
+    vault read kv/data/db/mysql/cust-profile-db-creds
+    ```
+
+    You should see that the password is `old-password`. That's because your teammate
+    hasn't updated it from the latest value in the shared mount. Take a look at the
+    contents of the file on the shared mount, which should have the latest
+    password.
+
+    ```
+    cat /share/mysql/cust-profile-db-creds.txt
+    ```
+
+    Because the old password was stored on the shared mount, it can no longer be
+    considered uncompromised. You should update it in Vault to reflect the real
+    password you found in the shared mount file.
+
+    *TODO: Control Groups? MFA?*
+
+    ```
+    vault kv put kv/db/mysql/cust-profile-db-creds username=root password=R34L-P455W0rd
+    ```
+
+    You have successfully updated the Customer Profile database secret. It is now
+    RBAC protected and auditable.
+
+    *TODO: Remove the old shared mount file?*
+  notes:
+  - type: text
+    contents: |-
+      Now you know what secrets, services, apps and database are involved. You also
+      know how Vault stores the data in the `kv` secrets engine.
+
+      Time to migrate the first secret to Vault.
+  - type: text
+    contents: |-
+      The first secret you'll be migrating is the set of credentials for the Customer
+      Profile MySQL database, aka `cust-profile-db-creds`.
+
+      `cust-profile-db-creds` are currently stored in a spreadsheet on a shared mount.
+      All of your team members at ACME have access to this shared mount, and whenever
+      you need to deploy the app, a DBA SSHes into a box that has access to the shared
+      mount and updates the value.
+  - type: text
+    contents: |-
+      Your team has started working on migrating the secrets over, and one of the first
+      secrets that will be moved over to Vault will be those shared database credentials
+      for the Customer Profile database. These credentials are used by ACME's web
+      service to pull in the necessary information about each logged in user.
+
+      Your first task is to move those shared database credentials to Vault.
+  tabs:
+  - title: Migrating Static Database Secrets
+    type: terminal
+    hostname: vault-server
+  - title: Vault UI
+    type: service
+    hostname: vault-server
+    port: 8200
+  difficulty: basic
+  timelimit: 300
+- slug: static-to-dynamic-database-secrets
+  id: atiz2lovvrka
+  type: challenge
+  title: Static to Dynamic Database Secrets
+  teaser: Migrate another database credential secret from Git to a dynamic Vault secret.
+  assignment: |-
+    *You have automatically been logged back in with the root token.*
+
+    *TODO: create a cc-storage-devs namespace for this*
+
+    ---
+
+    The `database` secrets engine generates database credentials dynamically based on configured
+    roles. With each request, a unique username and password pair are generated and returned.
+    While it can manage static roles and password rotation, that is not the focus of this
+    challenge.
+
+    In order to generate dynamic secrets for MySQL, the first thing you'll need to enable
+    is the `database` secrets engine.
+
+    ```
+    vault secrets enable database
+    ```
+
+    Once it's enabled, we need to configure it to communicate with your MySQL database. You
+    can find the credentials for the database at `/git/app-secrets/cc-storage-db-creds.txt`.
+
+    ```
+    cat /git/app-secrets/cc-storage-db-creds.txt
+    ```
+
+    With the `root` user and `root` password in hand, configure the `database` secrets
+    engine to communicate with your MySQL server.
+
+    ```
+    vault write database/config/acme-mysql-cc-database \
+        plugin_name=mysql-database-plugin \
+        connection_url="{{username}}:{{password}}@tcp(127.0.0.1:3306)/" \
+        allowed_roles="cc-storage-svc" \
+        username=$MYSQL_ROOT_USER \
+        password=$MYSQL_ROOT_PASSWORD
+    ```
+
+    Next, you'll have to configure a role in the `database` secrets engine and associate
+    it with a `CREATE USER` statement in MySQL. Here you can also configure things like
+    the `default_ttl` or `max_ttl`, which refers to the duration of the lease on the
+    secrets before they expire and are automatically revoked.
+
+    ```
+    vault write database/roles/cc-storage-svc \
+        db_name=acme-mysql-cc-database \
+        creation_statements="CREATE USER '{{name}}'@'%' IDENTIFIED BY '{{password}}';GRANT SELECT ON *.* TO '{{name}}'@'%';" \
+        default_ttl="1h" \
+        max_ttl="24h"
+    ```
+
+    You are now ready to generate dynamic MySQl credentials.
+
+    ```
+    vault read database/creds/cc-storage-svc
+    ```
+
+    Confirm that you can connect to the MySQL instance with these credentials by plugging
+    the response values into the below command.
+
+    ```
+    mysql -u YOUR_GENERATED_USERNAME -p YOUR_GENERATED_USERNAME
+    ```
+
+    If you are not denied access, then you have successfully configured Vault for dynamic
+    database credentials and are ready to move on.
+  notes:
+  - type: text
+    contents: |-
+      The `cust-profile-db-creds` are not the only database credentials that need to be
+      migrated over to Vault. The `cc-storage-db-creds` are currently hard-coded in a
+      private GitHub repo owned by the application team, deployed as part of the application
+      bundle/artifact by Jenkins.
+
+      However this time, instead of migrating the secret to the KV secrets engine, you are
+      going to need to make it a dynamic secret.
+  - type: text
+    contents: |-
+      Unlike the KV secrets engine where you had to put data into the store yourself, dynamic
+      secrets are generated when they are accessed. Dynamic secrets do not exist until they
+      are read, so there is no risk of someone stealing them or another client using the same
+      secrets.
+
+      Because Vault has built-in revocation mechanisms, dynamic secrets can be revoked
+      immediately after use, minimizing the amount of time the secret existed.
+  tabs:
+  - title: Static to Dynamic Database Secrets
+    type: terminal
+    hostname: vault-server
+  - title: Vault UI
+    type: service
+    hostname: vault-server
+    port: 8200
+  difficulty: basic
+  timelimit: 300
+- slug: migrating-static-api-secrets
+  id: bbsyuicpnewp
+  type: challenge
+  title: Migrating Static API Secrets
+  teaser: Migrate a static API key from legacy workflow to Vault.
+  assignment: |-
+    Log back in with the root token again.
+
+    ```
+    export VAULT_TOKEN=$(echo /root/token)
+    vault login $VAULT_TOKEN
+    ```
+
+    *TODO: New policies explanation*
+
+    ```
+    cat operator-policy.hcl
+    cat security-policy.hcl
+
+    vault policy write operator operator-policy.hcl
+    vault policy write operator security-policy.hcl
+    ```
+
+    Similar to what you did with `dba-dan` before, you should log in with
+    `ops-olivia` and test that the user will have the correct access to
+    secrets.
+
+    ```
+    vault login -method=userpass -username=ops-olivia -password=ops-olivia
+    ```
+
+    Note the policy after logging in.
+
+    Since you have logged in with the Ops user, you should still be able to read the
+    secret from the path.
+
+    ```
+    vault kv list kv/api
+    vault kv read kv/api/shopping-cart-svc-api-token token=TODO
+    ```
+
+    Because the old token was stored in git, it can no longer be
+    considered uncompromised. You need to update the path in Vault
+    so that it has the new token: `TODO-NEW-TOKEN`.
+
+    ```
+    vault kv put kv/api/shopping-cart-svc-api-token token=TODO-NEW-TOKEN
+    ```
+
+    *TODO: redeploy the web service with the right policies attached*
+  notes:
+  - type: text
+    contents: |-
+      Now that you have successfully configured Vault and the ACME web service to
+      communicate with the Customer Profile database, you will have to move on
+      to protecting the API tokens used by the web service.
+
+      Currently, Jenkins retrieves the secret from Cyberark or similar--the job knows
+      the secret it needs to access (has a secret ID) and Jenkins' IP address is whitelisted.
+  - type: text
+    contents: |-
+      Jenkins then encrypts the secret with a key pair, SSHs to the web service host and
+      writes the secret to a 'secure directory.' Config management (or BASH on a cron) then
+      decrypts the secret with the same key pair (pre-loaded on the host) and writes it to
+      the config file. The key pair used hasn't been rotated for 10 years.
+
+      Your teammate who set up Vault has also migrated this secret into Vault already as well.
+      You need to go in and make sure all of the right identities have access, using the
+      policy system again.
+  tabs:
+  - title: Migrate Static API Secrets
+    type: terminal
+    hostname: vault-server
+  - title: Vault UI
+    type: service
+    hostname: vault-server
+    port: 8200
+  difficulty: basic
+  timelimit: 600
+- slug: dynamic-ssl-with-vault-pki
+  id: n4wk9sn1v9lw
+  type: challenge
+  title: Dynamic SSL with Vault PKI
+  teaser: Migrate from a static TLS cert to dynamic certs served by Vault.
+  assignment: |-
+    Log back in with the root token again.
+
+    ```
+    vault secrets enable pki
+    ```
+
+    ```
+    vault secrets tune -max-lease-ttl=8760h pki
+    ```
+
+    ```
+    vault write pki/root/generate/internal \
+        common_name=my-website.com \
+        ttl=8760h
+    ```
+
+    ```
+    vault write pki/config/urls \
+        issuing_certificates="http://127.0.0.1:8200/v1/pki/ca" \
+        crl_distribution_points="http://127.0.0.1:8200/v1/pki/crl"
+    ```
+
+    ```
+    vault write pki/roles/example-dot-com \
+        allowed_domains=my-website.com \
+        allow_subdomains=true \
+        max_ttl=72h
+    ```
+
+    ```
+    vault write pki/issue/example-dot-com \
+        common_name=www.my-website.com
+    ```
+  notes:
+  - type: text
+    contents: 'web-svc-crt: Cloned from a private repository (by config mgmt or BASH
+      on a cron) using the shared SSH key deployed to all hosts.'
+  tabs:
+  - title: Dynamic SSL with Vault PKI
+    type: terminal
+    hostname: vault-server
+  - title: Vault UI
+    type: service
+    hostname: vault-server
+    port: 8200
+  difficulty: basic
+  timelimit: 300
+- slug: vault-approle-and-your-service
+  id: xxixg1miskmx
+  type: challenge
+  title: Vault, AppRole and Your Web Service
+  teaser: Configure Vault to accept AppRole authentication for your web service.
+  assignment: |-
+    Log back in with the root token again.
+
+    ```
+    export VAULT_TOKEN=$(echo /root/token)
+    vault login $VAULT_TOKEN
+    ```
+
+    *TODO: Explain AppRole then enable it*
+
+    ```
+    vault auth enable approle
+    ```
+
+    *TODO: Configure the web-svc role for AppRole*
+
+    ```
+    vault write auth/approle/role/web-svc \
+        secret_id_ttl=10m \
+        token_num_uses=10 \
+        token_ttl=20m \
+        token_max_ttl=30m \
+        secret_id_num_uses=40 \
+        policies=web-svc
+    ```
+
+    *TODO: Explain the role and secret ID concepts in app role*
+
+    ```
+    ROLE_ID=$(vault read auth/approle/role/web-svc/role-id -format=json | jq -r .data.role_id)
+    SECRET_ID=$(vault write -f auth/approle/role/web-svc/secret-id -format=json | jq -r .data.secret_id)
+    ```
+
+    *TODO: Log in with the Approle ID you just configured*
+
+    ```
+    vault write auth/approle/login \
+        role_id=$ROLE_ID \
+        secret_id=$SECRET_ID
+    ```
+
+    *TODO: Read the secret and show you can read it*
+
+    ```
+    vault read kv/data/db/mysql/cust-profile-db-creds
+    ```
+
+    *TODO: Try to update the secret and show you can't update it*
+
+    ```
+    vault kv put kv/db/mysql/cust-profile-db-creds username=root password=R34L-P455W0rd
+    ```
+
+    *TODO: Confirm MySQL access with the new credentials*
+    ```
+    mysql -u root -h mysql-server -p$MYSQL_PASSWORD
+    ```
+
+    *TODO: Re-deploy the demo app, note the secret is automatically retrieved.*
+  notes:
+  - type: text
+    contents: '*TODO: explain AppRole and the redeploy process.*'
+  tabs:
+  - title: Vault, AppRole and Your Web Service
+    type: terminal
+    hostname: vault-server
+  - title: Vault UI
+    type: service
+    hostname: vault-server
+    port: 8200
+  difficulty: basic
+  timelimit: 300
+checksum: "18184985118732427888"
