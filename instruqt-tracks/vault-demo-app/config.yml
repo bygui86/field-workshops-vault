@@ -25,3 +25,13 @@ containers:
     MYSQL_PASS: R34L-P455W0rd
     MYSQL_ROOT_PASSWORD: root
     MYSQL_USER: demo
+- name: demo-app-product-api
+  image: hashicorpdemoapp/product-api:v0.0.6
+  ports:
+  - 9090
+  environment:
+    CONFIG_FILE: conf.json
+
+# echo '{
+  # "db_connection": "host=localhost port=15432 user=postgres password=password dbname=products sslmode=disable"
+# }' > conf.json
