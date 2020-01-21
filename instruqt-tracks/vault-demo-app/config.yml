@@ -31,6 +31,12 @@ containers:
   - 9090
   environment:
     CONFIG_FILE: conf.json
+- name: demo-app-product-api
+  image: hashicorpdemoapp/frontend:v0.0.3
+  ports:
+  - 9090
+  environment:
+    CONFIG_FILE: conf.json
 
 # echo '{
   # "db_connection": "host=localhost port=15432 user=postgres password=password dbname=products sslmode=disable"
