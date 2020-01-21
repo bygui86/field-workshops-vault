@@ -1,13 +1,15 @@
 version: '3'
 services:
   postgres:
-    image: "postgres:9.6.16"
+    image: "hashicorpdemoapp/postgres:latest"
     ports:
       - "5432:5432"
     restart: always
     environment:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: products
+    volumes:
+    - ./products.sql:/docker-entrypoint-initdb.d/products.sql
   product-api:
     image: "hashicorpdemoapp/product-api:v0.0.11"
     ports:
