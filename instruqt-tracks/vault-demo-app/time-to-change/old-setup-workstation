@@ -1,59 +1,35 @@
 #!/bin/sh -l
 
-# Install curl
-apk add curl
+# Install helpful CLI tools
+apk add curl jq groff mysql-client
 
-# Install jq
-apk add jq
+# Install Vault
+wget https://releases.hashicorp.com/vault/1.3.1/vault_1.3.1_linux_amd64.zip
+unzip vault_1.3.1_linux_amd64.zip
+mv vault /usr/bin
 
-# Install groff
-apk add groff
+# Install Consul
+wget https://releases.hashicorp.com/consul/1.6.2/consul_1.6.2_linux_amd64.zip
+unzip consul_1.6.2_linux_amd64.zip
+mv consul /usr/bin
 
-# Install pip
-apk add py-pip
+# Install Kubectl
+curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl
+chmod +x kubectl
+mv kubectl /usr/bin
 
-# Install mysql-client
-apk add mysql-client
+# Install shipyard and create environment
+ curl https://shipyard.run/apply | /bin/bash -s github.com/hashicorp-demoapp/infrastructure//blueprint
 
-# Write vault-config.hcl
-cat <<-EOF > /vault/config/vault-config.hcl
-listener "tcp" {
- address = "0.0.0.0:8200"
- tls_disable = 1
-}
-storage "file" {
-  path = "/vault/file"
-}
-disable_mlock = true
-api_addr = "http://localhost:8200"
-ui=true
-EOF
+ # Add env vars
+echo "export KUBECONFIG=/root/.shipyard/config/k3s/kubeconfig.yaml" >> /root/.bashrc
+echo "export VAULT_ADDR=http://localhost:18200" >> /root/.bashrc
+echo "export VAULT_TOKEN=root" >> /root/.bashrc
+echo "export CONSUL_HTTP_ADDR=http://localhost:18500" >> /root/.bashrc
 
-# Run Vault server
-vault server -config=/vault/config/vault-config.hcl -log-level=debug > /vault/logs/vault.log 2>&1 &
+# Login with the root token (which is set to root)
+vault login root
 
-# Sleep 5 seconds
-sleep 5
-
-# Initialize Vault server
-vault operator init -key-shares=1 -key-threshold=1 > init.log
-
-# Extract root token and unseal key from init.log
-token=$(sed -n 3p init.log | cut -d':' -f2 | cut -d' ' -f2)
-unseal_key=$(sed -n 1p init.log | cut -d':' -f2 | cut -d' ' -f2)
-
-# Write token to /root/token
-echo $token > /root/token
-
-# TODO: auto-unseal this
-# Write unseal key to /root/unseal_key
-echo $unseal_key > /root/unseal_key
-
-# Unseal Vault server
-vault operator unseal $unseal_key
-
-# Log in with the root token
-vault login $token
 
 ###########
 # Create Namespaces
@@ -68,33 +44,33 @@ vault login $token
 ###########
 
 tee dba-operator-policy.hcl <<EOF
-path "kv/data/db/*" {
+path "kv/db/*" {
   capabilities = ["list", "read", "create", "update"]
 }
 EOF
 
 tee operator-policy.hcl <<EOF
-path "kv/data/api/*" {
+path "kv/api/*" {
   capabilities = ["list", "read", "create", "update"]
 }
 EOF
 
 tee security-policy.hcl <<EOF
-path "kv/data/db/*" {
+path "kv/db/*" {
   capabilities = ["read"]
 }
 
-path "kv/data/api/*" {
+path "kv/api/*" {
   capabilities = ["read"]
 }
 EOF
 
 tee cc-storage-svc-devs-policy.hcl <<EOF
-path "kv/data/db/cc-storage-db-creds" {
+path "kv/db/cc-storage-db-creds" {
   capabilities = ["read"]
 }
 
-path "kv/data/api/cc-storage-svc-api-token" {
+path "kv/api/cc-storage-svc-api-token" {
   capabilities = ["read"]
 }
 EOF
@@ -103,21 +79,21 @@ EOF
 # Service Policies
 ###########
 tee web-svc-policy.hcl <<EOF
-path "kv/data/db/cust-profile-db-creds" {
+path "kv/db/cust-profile-db-creds" {
   capabilities = ["read"]
 }
 
-path "kv/data/db/cc-storage-db-creds" {
+path "kv/db/cc-storage-db-creds" {
   capabilities = ["read"]
 }
 EOF
 
 tee cc-storage-svc-policy.hcl <<EOF
-path "kv/data/db/cc-storage-db-creds" {
+path "kv/db/cc-storage-db-creds" {
   capabilities = ["read"]
 }
 
-path "kv/data/api/cc-storage-svc-api-token" {
+path "kv/api/cc-storage-svc-api-token" {
   capabilities = ["read"]
 }
 EOF
@@ -127,7 +103,7 @@ EOF
 ###########
 
 # Create the KV secrets engine for static secrets
-vault secrets enable -path="kv" kv-v2
+vault secrets enable -path="kv" kv
 
 # Seed a sample Customer Profile secret
 vault kv put kv/db/mysql/cust-profile-db-creds username=$MYSQL_USER password=$MYSQL_BAD_PASS

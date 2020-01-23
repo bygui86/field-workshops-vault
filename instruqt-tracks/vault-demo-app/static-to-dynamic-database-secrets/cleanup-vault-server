@@ -1,7 +1,0 @@
-#!/bin/bash -l
-
-# Log the user back in with the root token before the next challenge.
-VAULT_TOKEN=$(cat /root/token)
-vault login $VAULT_TOKEN
-
-exit 0

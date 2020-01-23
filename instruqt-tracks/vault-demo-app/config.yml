@@ -1,43 +1,6 @@
 version: "2"
-containers:
-- name: vault-server
-  image: vault:1.2.3
-  cmd: version
-  shell: /bin/sh
-  ports:
-  - 8200
-  environment:
-    MYSQL_BAD_PASS: old-password
-    MYSQL_DATABASE: demo-customers
-    MYSQL_GOOD_PASS: R34L-P455W0rd
-    MYSQL_ROOT_PASSWORD: root
-    MYSQL_ROOT_USER: root
-    MYSQL_USER: demo
-    SKIP_SETCAP: "true"
-    VAULT_ADDR: http://localhost:8200
-  memory: 128
-- name: mysql-server
-  image: gcr.io/instruqt-hashicorp/hashidb:latest
-  ports:
-  - 3306
-  environment:
-    MYSQL_DATABASE: demo-customers
-    MYSQL_PASS: R34L-P455W0rd
-    MYSQL_ROOT_PASSWORD: root
-    MYSQL_USER: demo
-- name: demo-app-product-api
-  image: hashicorpdemoapp/product-api:v0.0.6
-  ports:
-  - 9090
-  environment:
-    CONFIG_FILE: conf.json
-- name: demo-app-product-api
-  image: hashicorpdemoapp/frontend:v0.0.3
-  ports:
-  - 9090
-  environment:
-    CONFIG_FILE: conf.json
-
-# echo '{
-  # "db_connection": "host=localhost port=15432 user=postgres password=password dbname=products sslmode=disable"
-# }' > conf.json
+virtualmachines:
+- name: workstation
+  image: instruqt-hashicorp/kubernetes-1-14-0
+  shell: /usr/bin/start.sh
+  machine_type: n1-standard-2

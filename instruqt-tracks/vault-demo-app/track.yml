@@ -2,9 +2,10 @@ slug: vault-demo-app
 id: gc5ak3quhakx
 type: track
 title: Vault Demo App
-teaser: Help get ACME, Inc. into regulatory compliance.
-description: ACME, Inc. has been caught with bad secrets management practices by independent
-  auditors. Learn how to migrate old application secrets and get ACME, Inc. compliant.
+teaser: Help get HashiCups, Inc. into regulatory compliance.
+description: HashiCups, Inc. has been caught with bad secrets management practices
+  by independent auditors. Learn how to migrate old application secrets and get HashiCups,
+  Inc. compliant.
 icon: https://storage.googleapis.com/instruqt-frontend/assets/hashicorp/tracks/vault.png
 tags:
 - vault
@@ -21,29 +22,15 @@ challenges:
   id: xegkefzbeka5
   type: challenge
   title: Time to Change
-  teaser: Busted! Secrets at ACME, Inc. are not centralized or governed. It's time
-    to change.
+  teaser: Busted! Secrets at HashiCups, Inc. are not centralized or governed. It's
+    time to change.
   assignment: |-
-    You have been automatically logged into Vault using the
-    [root token](https://www.vaultproject.io/docs/concepts/tokens.html#root-tokens).
-
-    At any time during this track, you can view your root token at `/root/token`.
-
-    ```
-    cat /root/token
-    ```
-
-    If you open up the Vault UI tab and use this token, you can log into the UI and
-    take a look around.
-
-    This token will be valid for the duration of the track. Typically, you'll
-    `export` that token value as your `VAULT_TOKEN` environment variable, however,
-    you should not do that for this track.
-
-    ---
-
-    Since you are logged in with the root token already, you'll have full access to begin
+    The [root token](https://www.vaultproject.io/docs/concepts/tokens/) for this Vault
+    installation is simply "`root`". With the root token, you'll have full access to begin
     this challenge.
+
+    You can log in using `vault login root` or by typing `root` into the token auth method
+    field in the UI.
 
     *TODO: SHOW THE BROKEN APP UI, AND HOW IT CANNOT ACCESS ANY EXTERNAL SYSTEM ANYMORE.*
 
@@ -78,39 +65,41 @@ challenges:
   notes:
   - type: text
     contents: |-
-      You are a DevOps engineer at ACME, Inc.
+      You are a DevOps engineer at HashiCups, Inc.
 
-      ACME, Inc. has recently been audited by regulators. As a result of the audit,
-      it was exposed that ACME has been keeping secrets in plain text in git repos,
+      HashiCups, Inc. has recently been audited by regulators. As a result of the audit,
+      it was exposed that HashiCups has been keeping secrets in plain text in git repos,
       shared mounts, and spreadsheets.
   - type: text
     contents: |-
-      To satisfy the regulators and auditors, ACME has decided to bring Vault in
+      To satisfy the regulators and auditors, HashiCups has decided to bring Vault in
       as a centralized secrets management service. Your team has been tasked with
       migrating from your legacy secret storage to the new, Vault secrets management
       solution.
 
       To start, you and your team are going to migrate all of the secrets required
-      to run the ACME Store Web Service.
+      to run the HashiCups Store Web Service.
   - type: text
     contents: |-
-      The ACME Store Web Service consists of five components within scope.
+      The HashiCups Store consists of five components within scope.
 
-        1) `web-svc`
-          - A front end web service that runs on a VM.
-        2) `cust-profile-db`
-          - A MySQL database that contains customer profile information.
-        3) `shopping-cart-svc`
-          - A containerized shopping cart service (maintly retrieves items added to cart by customers).
-        4) `cc-storage-svc`
+        1) [`frontend`](https://github.com/hashicorp-demoapp/frontend)
+          - A front end web service
+        2) `postgres`
+          - A Postgres database that contains the HashiCups products
+        3) [`product-api-go`](https://github.com/hashicorp-demoapp/product-api-go)
+          - A REST API service to serve CRUD operations on the `postgres` database.
+        4) ``
           - A service/api endpoint that stores and retrieves credit card information.
-        5) `cc-storage-db`
-          - A database containing customer credit card information.
-
-      *TODO: add an architecture diagram here*
+        5) `redis`
+          - A Redis cache for payment information.
+          - TODO: Maybe don't use a cache for the payments service, takes people out
+          of the realism.
+  - type: text
+    contents: '![HashiCups Reference Architecture Diagram](https://github.com/hashicorp-demoapp/infrastructure/raw/master/images/infa.png)'
   - type: text
     contents: |-
-      The ACME Store Web Service also has five secrets in use today.
+      The HashiCups Store Web Service also has five secrets in use today.
 
       1) `cust-profile-db-creds`
         - MySQL database credentials for the Customer Profile database.
@@ -127,16 +116,23 @@ challenges:
       You will learn how each of these are deployed later in the track. For now, just
       remember what they are used for.
   tabs:
-  - title: Time to Change
+  - title: K8s
     type: terminal
-    hostname: vault-server
+    hostname: workstation
+  - title: Consul UI
+    type: service
+    hostname: workstation
+    path: /ui/
+    port: 30085
   - title: Vault UI
     type: service
-    hostname: vault-server
-    port: 8200
-  - title: Demo App Product API
-    type: terminal
-    hostname: demo-app-product-api
+    hostname: workstation
+    path: /ui/
+    port: 30082
+  - title: K8s UI
+    type: service
+    hostname: workstation
+    port: 30443
   difficulty: basic
   timelimit: 120
 - slug: migrating-static-database-secrets
@@ -152,7 +148,7 @@ challenges:
     or machine can gain access. Since Vault operates on the principle of "least-privileged"
     you should scope the access to be as limited as possible.
 
-    There are two roles at ACME that will need access to these secrets. The DBA team
+    There are two roles at HashiCups that will need access to these secrets. The DBA team
     (`dba-operator`) will need to be able to perform all CRUD operations on for the MySQL
     creds path, and the actual web service (`web-svc`) itself only needs to read the secrets
     at that path.
@@ -205,7 +201,7 @@ challenges:
     you should be able to read the secret from the path.
 
     ```
-    vault read kv/data/db/mysql/cust-profile-db-creds
+    vault read kv/db/mysql/cust-profile-db-creds
     ```
 
     You should see that the password is `old-password`. That's because your teammate
@@ -244,25 +240,36 @@ challenges:
       Profile MySQL database, aka `cust-profile-db-creds`.
 
       `cust-profile-db-creds` are currently stored in a spreadsheet on a shared mount.
-      All of your team members at ACME have access to this shared mount, and whenever
+      All of your team members at HashiCups have access to this shared mount, and whenever
       you need to deploy the app, a DBA SSHes into a box that has access to the shared
       mount and updates the value.
   - type: text
     contents: |-
       Your team has started working on migrating the secrets over, and one of the first
       secrets that will be moved over to Vault will be those shared database credentials
-      for the Customer Profile database. These credentials are used by ACME's web
+      for the Customer Profile database. These credentials are used by HashiCups's web
       service to pull in the necessary information about each logged in user.
 
       Your first task is to move those shared database credentials to Vault.
   tabs:
-  - title: Migrating Static Database Secrets
-    type: terminal
-    hostname: vault-server
-  - title: Vault UI
+  - title: App
     type: service
-    hostname: vault-server
-    port: 8200
+    hostname: workstation
+    path: /coffee
+    port: 19090
+  - title: Terminal
+    type: terminal
+    hostname: workstation
+  - title: Consul
+    type: service
+    hostname: workstation
+    path: /ui
+    port: 30085
+  - title: Vault
+    type: service
+    hostname: workstation
+    path: /
+    port: 18200
   difficulty: basic
   timelimit: 300
 - slug: static-to-dynamic-database-secrets
@@ -300,7 +307,13 @@ challenges:
     engine to communicate with your MySQL server.
 
     ```
-    vault write database/config/acme-mysql-cc-database \
+    vault write database/config/my-postgresql-database \
+        plugin_name=postgresql-database-plugin \
+        allowed_roles="cc-storage-svc" \
+        connection_url="postgresql://{{username}}:{{password}}@localhost:5432/" \
+        username="$POSTGRES_USER" \
+        password="$POSTGRES_PASS"
+    vault write database/config/hashicups-mysql-cc-database \
         plugin_name=mysql-database-plugin \
         connection_url="{{username}}:{{password}}@tcp(127.0.0.1:3306)/" \
         allowed_roles="cc-storage-svc" \
@@ -315,7 +328,7 @@ challenges:
 
     ```
     vault write database/roles/cc-storage-svc \
-        db_name=acme-mysql-cc-database \
+        db_name=hashicups-mysql-cc-database \
         creation_statements="CREATE USER '{{name}}'@'%' IDENTIFIED BY '{{password}}';GRANT SELECT ON *.* TO '{{name}}'@'%';" \
         default_ttl="1h" \
         max_ttl="24h"
@@ -356,13 +369,24 @@ challenges:
       Because Vault has built-in revocation mechanisms, dynamic secrets can be revoked
       immediately after use, minimizing the amount of time the secret existed.
   tabs:
-  - title: Static to Dynamic Database Secrets
-    type: terminal
-    hostname: vault-server
-  - title: Vault UI
+  - title: Vault
     type: service
-    hostname: vault-server
-    port: 8200
+    hostname: workstation
+    path: /
+    port: 18200
+  - title: App
+    type: service
+    hostname: workstation
+    path: /coffee
+    port: 19090
+  - title: Terminal
+    type: terminal
+    hostname: workstation
+  - title: Consul
+    type: service
+    hostname: workstation
+    path: /ui
+    port: 18500
   difficulty: basic
   timelimit: 300
 - slug: migrating-static-api-secrets
@@ -415,7 +439,7 @@ challenges:
   notes:
   - type: text
     contents: |-
-      Now that you have successfully configured Vault and the ACME web service to
+      Now that you have successfully configured Vault and the HashiCups web service to
       communicate with the Customer Profile database, you will have to move on
       to protecting the API tokens used by the web service.
 
@@ -432,13 +456,24 @@ challenges:
       You need to go in and make sure all of the right identities have access, using the
       policy system again.
   tabs:
-  - title: Migrate Static API Secrets
-    type: terminal
-    hostname: vault-server
-  - title: Vault UI
+  - title: Vault
     type: service
-    hostname: vault-server
-    port: 8200
+    hostname: workstation
+    path: /
+    port: 18200
+  - title: App
+    type: service
+    hostname: workstation
+    path: /coffee
+    port: 19090
+  - title: Terminal
+    type: terminal
+    hostname: workstation
+  - title: Consul
+    type: service
+    hostname: workstation
+    path: /ui
+    port: 18500
   difficulty: basic
   timelimit: 600
 - slug: dynamic-ssl-with-vault-pki
@@ -485,13 +520,24 @@ challenges:
     contents: 'web-svc-crt: Cloned from a private repository (by config mgmt or BASH
       on a cron) using the shared SSH key deployed to all hosts.'
   tabs:
-  - title: Dynamic SSL with Vault PKI
-    type: terminal
-    hostname: vault-server
-  - title: Vault UI
+  - title: Vault
     type: service
-    hostname: vault-server
-    port: 8200
+    hostname: workstation
+    path: /
+    port: 18200
+  - title: App
+    type: service
+    hostname: workstation
+    path: /coffee
+    port: 19090
+  - title: Terminal
+    type: terminal
+    hostname: workstation
+  - title: Consul
+    type: service
+    hostname: workstation
+    path: /ui
+    port: 18500
   difficulty: basic
   timelimit: 300
 - slug: vault-approle-and-your-service
@@ -543,7 +589,7 @@ challenges:
     *TODO: Read the secret and show you can read it*
 
     ```
-    vault read kv/data/db/mysql/cust-profile-db-creds
+    vault read kv/db/mysql/cust-profile-db-creds
     ```
 
     *TODO: Try to update the secret and show you can't update it*
@@ -562,13 +608,24 @@ challenges:
   - type: text
     contents: '*TODO: explain AppRole and the redeploy process.*'
   tabs:
-  - title: Vault, AppRole and Your Web Service
-    type: terminal
-    hostname: vault-server
-  - title: Vault UI
+  - title: Vault
     type: service
-    hostname: vault-server
-    port: 8200
+    hostname: workstation
+    path: /
+    port: 18200
+  - title: App
+    type: service
+    hostname: workstation
+    path: /coffee
+    port: 19090
+  - title: Terminal
+    type: terminal
+    hostname: workstation
+  - title: Consul
+    type: service
+    hostname: workstation
+    path: /ui
+    port: 18500
   difficulty: basic
   timelimit: 300
-checksum: "6489095231485188283"
+checksum: "62336052128586065"
