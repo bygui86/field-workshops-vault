@@ -3,25 +3,38 @@
 # Get Local IP
 local_ipv4=$(curl -s -H "Metadata-Flavor: Google" http://metadata/computeMetadata/v1/instance/network-interfaces/0/ip)
 
+
+# Get Consul binary for client usage
+wget https://releases.hashicorp.com/consul/1.6.1/consul_1.6.1_linux_amd64.zip
+unzip consul_1.6.1_linux_amd64.zip
+mv consul /usr/local/bin/consul
+chmod +x /usr/local/bin/consul
+rm -f consul_1.6.1_linux_amd64.zip
+
+# Get Vault binary for client usage
+wget https://releases.hashicorp.com/vault/1.3.1/vault_1.3.1_linux_amd64.zip
+unzip vault_1.3.1_linux_amd64.zip
+mv vault /usr/local/bin/vault
+chmod +x /usr/local/bin/vault
+rm -f vault_1.3.1_linux_amd64.zip
+
 # Install k3s
 curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="v1.0.0" INSTALL_K3S_EXEC="--node-name=kubernetes --docker --no-deploy traefik --no-deploy servicelb" sh -
 mkdir -p /root/.kube
 cp /etc/rancher/k3s/k3s.yaml /root/.kube/config
 sleep  10
 
+# Storage
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
 
 # Install Helm
 curl https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get > get_helm.sh
 chmod 700 get_helm.sh && ./get_helm.sh && rm ./get_helm.sh
 kubectl -n kube-system create serviceaccount tiller
 kubectl create clusterrolebinding tiller --clusterrole cluster-admin --serviceaccount=kube-system:tiller
-
 helm init --wait --service-account tiller
 sleep 3
-
-# Storage
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
-kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
 
 # Set up Kubernetes Dashboard
 cat <<EOF | kubectl apply -f -
@@ -272,41 +285,29 @@ EOF
 git clone --branch v0.3.3 https://github.com/hashicorp/vault-helm.git
 
 cat <<-EOF > /root/vault-values.yaml
----
 server:
-  dataStorage:
-    size: 512Mb
-  dev:
-    enabled: true
   standalone:
     enabled: true
-  authDelegator:
-    enabled: true
+    config: |
+      ui = true
+
+      listener "tcp" {
+        tls_disable = 1
+        address = "[::]:8200"
+        cluster_address = "[::]:8201"
+      }
+
+      storage "file" {
+        path = "/vault/data"
+      }
 ui:
   enabled: true
+  serviceType: NodePort
+  externalPort: 8200
+  serviceNodePort: 30082
 EOF
 
 # Install Vault with Helm
 helm install --wait --name vault -f /root/vault-values.yaml vault-helm/
-
-# Setup the UI for Vault
-cat <<EOF | kubectl apply -f -
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: vault-service
-spec:
-  type: NodePort
-  selector:
-    app: vault
-    component: server
-  ports:
-  - name: http
-    protocol: TCP
-    port: 8200
-    targetPort: 8200
-    nodePort: 30082
-EOF
 
 exit 0
